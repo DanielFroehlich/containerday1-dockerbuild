@@ -31,5 +31,4 @@ oc start-build siemens-jdk18 --from-dir .  --follow
 
 # Move the stuff to git!
 oc delete buildconfig siemens-jdk18
-
-oc new-build --strategy docker --binary --name=siemens-jdk18
+oc new-build https://github.com/DanielFroehlich/containerday1-dockerbuild.git --name=siemens-jdk18
