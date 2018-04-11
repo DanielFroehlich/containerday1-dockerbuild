@@ -1,0 +1,163 @@
+Base Image: Containerday1-dockerbuild -
+
+# GIT REPO: containerday1-dockerbuild
+
+# Create Project:
+oc new-project containerday-baseimg
+
+#Create Build COnfig In OpenShift:
+oc new-build --strategy docker --binary --name=siemens_jdk18
+
+#Wrong Name!
+#Try again:
+oc new-build --strategy docker --binary --name=siemens-jdk18
+
+#Create Dockerfile (DockerFile_1)
+cp Dockerfile_1 Dockerfile
+oc start-build siemens-jdk18 --from-file ./Dockerfile  --follow
+
+# Root Required - User Dockerfile_2
+cp Dockerfile_2 Dockerfile
+oc start-build siemens-jdk18 --from-file ./Dockerfile  --follow
+
+
+# Get Files (like Root CA) into it - User DOckerfile_3
+cp Dockerfile_3 Dockerfile
+oc start-build siemens-jdk18 --from-file ./Dockerfile  --follow
+
+# Not all files are uploaded! Need to user --from-dir
+oc start-build siemens-jdk18 --from-dir .  --follow
+
+# Problem - Developer Interaction required to get this done
+# So: Move the stuff to git!
+oc delete buildconfig siemens-jdk18
+oc new-build https://github.com/DanielFroehlich/containerday1-dockerbuild.git --name=siemens-jdk18
+
+---- BACK TO SLIDES ----
+
+
+# Okay, now we have build the base Image - lets do something with it:
+
+
+Run the  Image: Containerday2-dockerbuild_with_binary
+# Create Project
+oc new-project containerday2-binaryapp
+
+# Show App1 java -jar simple java app
+# Show Dockerfile
+
+# Create Build Config for App1:
+oc new-build https://github.com/DanielFroehlich/containerday2-dockerbuild_with_binary --context-dir=App1 --name=app1
+
+#Deploy Image via Web Console, “Add to project, Deploy Image, Image STream Tag”
+# Or use
+oc new-app --image-stream=app1 --name=app1
+
+# show kubernetes in action by killing a prod:
+oc get pods
+oc delete pod ....
+
+
+# Create Build+Deploy Config for App2:
+oc new-app https://github.com/DanielFroehlich/containerday2-dockerbuild_with_binary --context-dir=App2 --name=app2
+
+# Show Build Chain
+oc adm build-chain openjdk18-openshift:1.3 -n containerday-baseimg --all
+
+# Start Build of base image
+oc start-build siemens-jdk18 -n containerday-baseimg --follow
+
+# Show that app1 + app2 re-builds + re-deploys happen as soon as build is finished!
+
+
+---- BACK TO SLIDES ----
+
+
+
+################### Deploy Binary WAR File using S2I Image
+
+# Checkout S2I Doc for EAP Image
+https://access.redhat.com/documentation/en/red-hat-xpaas/0/paged/red-hat-xpaas-eap-image
+
+
+# Create Project
+oc new-project containerday-3 --description "Sample Deployment of an existing JEE App with Java / EAP Source 2 Image build"
+
+# Deploy App:
+oc new-app https://github.com/DanielFroehlich/containerday3-s2i_with_binary.git \
+--name web-stress-simulator
+
+This fails with "no language matched". OpenShift can't determine the lanugage used in the git repo, because there are not hints (like pom.xml or packages.json).
+So we need give openshift a hint which language to use for Source 2 Image Build. In our case, we use the EAP70 Image:
+
+oc new-app jboss-eap70-openshift:1.5~https://github.com/DanielFroehlich/containerday3-s2i_with_binary.git --name web-stress-simulator
+
+# Create Route:
+oc expose svc/web-stress-simulator
+
+#Stress Test using apache bench:
+ab -n 1000 -c 4 \
+  http://REPLACE_ME/web-stress-simulator-1.0.0/cpu?time=1000
+
+Back to slides?
+
+-------------------------- Go to Eagle Cloud -----------------------
+
+#
+# Export Config on local laptop
+oc export buildconfig,imagestream,deploymentconfig,service,route -n containerday-3 >sample_export.yml
+
+# Login to Eagle Cloud
+
+# Create DEV project
+oc new-project containerday-5-dev
+
+# Create App from artefacts created in previous session
+oc create -f https://raw.githubusercontent.com/DanielFroehlich/containerday5-cloud_with_template/master/config_for_dev_from_laptop_export.yml
+
+
+# Create PROD project:
+oc new-project containerday-5-prod
+
+# Create Deployment Conifg
+oc create -f https://raw.githubusercontent.com/DanielFroehlich/containerday5-cloud_with_template/master/config_for_prod.yml
+
+# Note - No deployment happening in PROD project, as there is no PROD label
+# So lets Tag Image (i.e. version we want to go into prod:
+oc tag  web-stress-simulator:latest web-stress-simulator:prod
+
+# Note: Deployment will fail because image puller rights  are missing:
+# (prod project is not allowed to get image from dev project)
+# So we need to Grant Image Puller Rights:
+oc policy add-role-to-user system:image-puller system:serviceaccount:containerday-5-prod:default -n containerday-5-dev
+
+# Add Autoscaler Config to Deployment Config using web console
+
+# Use Apache Bench to show autoscaling:
+ab -n 1000 -c 4 \
+  http://REPLACE_ME/web-stress-simulator-1.0.0/cpu?time=1000
+
+#
+Show Full Pipeline using Ticket Monster Source To Image (Using Minishift)
+
+#
+# ---------------------- Source 2 Image DEV
+#
+
+# Create Project DEV:
+oc new-project ticketmonster-dev
+
+# Fetch Template with Build+DeployConfig from Public git repo and create the ressources:
+oc process -f  https://raw.githubusercontent.com/DanielFroehlich/ose3-ticket-monster/master/openshift/monster_template_dev.yml | oc create -f -
+
+
+
+oc new-project ticketmonster-prod
+oc process -f  https://raw.githubusercontent.com/DanielFroehlich/ose3-ticket-monster/master/openshift/monster_template_prod.yml | oc create -f -
+
+
+oc policy add-role-to-group system:image-puller system:serviceaccounts:ticketmonster-prod -n ticketmonster-dev
+
+
+# Create Pipeline
+ oc create -f git/ose3-ticket-monster/openshift/monster_pipeline_devops.yml
