@@ -31,7 +31,7 @@ oc start-build siemens-jdk18 --from-dir .  --follow
 # Problem - Developer Interaction required to get this done
 # So: Move the stuff to git!
 oc delete buildconfig siemens-jdk18
-oc new-build https://github.com/DanielFroehlich/containerday1-dockerbuild.git --name=siemens-jdk18
+oc new-build https://github.com/DanielFroehlich/containerday1-dockerbuild.git --name=siemens-jdk18 --follow
 
 ---- BACK TO SLIDES ----
 
@@ -90,7 +90,7 @@ oc new-app https://github.com/DanielFroehlich/containerday3-s2i_with_binary.git 
 This fails with "no language matched". OpenShift can't determine the lanugage used in the git repo, because there are not hints (like pom.xml or packages.json).
 So we need give openshift a hint which language to use for Source 2 Image Build. In our case, we use the EAP70 Image:
 
-oc new-app jboss-eap70-openshift:1.5~https://github.com/DanielFroehlich/containerday3-s2i_with_binary.git --name web-stress-simulator
+oc new-app jboss-eap70-openshift:1.7~https://github.com/DanielFroehlich/containerday3-s2i_with_binary.git --name web-stress-simulator
 
 # Create Route:
 oc expose svc/web-stress-simulator
@@ -108,6 +108,7 @@ Back to slides?
 oc export buildconfig,imagestream,deploymentconfig,service,route -n containerday-3 >sample_export.yml
 
 # Login to Eagle Cloud
+oc login ....
 
 # Create DEV project
 oc new-project containerday-5-dev
@@ -119,7 +120,7 @@ oc create -f https://raw.githubusercontent.com/DanielFroehlich/containerday5-clo
 # Create PROD project:
 oc new-project containerday-5-prod
 
-# Create Deployment Conifg
+# Create Deployment Config for PROD:
 oc create -f https://raw.githubusercontent.com/DanielFroehlich/containerday5-cloud_with_template/master/config_for_prod.yml
 
 # Note - No deployment happening in PROD project, as there is no PROD label
@@ -137,12 +138,18 @@ oc policy add-role-to-user system:image-puller system:serviceaccount:containerda
 ab -n 1000 -c 4 \
   http://REPLACE_ME/web-stress-simulator-1.0.0/cpu?time=1000
 
+# -----------------------------
 #
-Show Full Pipeline using Ticket Monster Source To Image (Using Minishift)
+# Show Full Pipeline using Ticket Monster Source To Image (Using Minishift or Eagle Cloud)
 
 #
-# ---------------------- Source 2 Image DEV
+# ---------------------- Source 2 Image DEV+PROD
 #
+
+# Make sure EAP64 image is available
+# (is missing in OpenShift 3.9 Minishift deployment)
+oc import-image openshift/jboss-eap64-openshift --from=registry.access.redhat.com/jboss-eap-6/eap64-openshift --all --confirm
+
 
 # Create Project DEV:
 oc new-project ticketmonster-dev
@@ -150,8 +157,7 @@ oc new-project ticketmonster-dev
 # Fetch Template with Build+DeployConfig from Public git repo and create the ressources:
 oc process -f  https://raw.githubusercontent.com/DanielFroehlich/ose3-ticket-monster/master/openshift/monster_template_dev.yml | oc create -f -
 
-
-
+# Create Project for PROD:
 oc new-project ticketmonster-prod
 oc process -f  https://raw.githubusercontent.com/DanielFroehlich/ose3-ticket-monster/master/openshift/monster_template_prod.yml | oc create -f -
 
@@ -159,5 +165,5 @@ oc process -f  https://raw.githubusercontent.com/DanielFroehlich/ose3-ticket-mon
 oc policy add-role-to-group system:image-puller system:serviceaccounts:ticketmonster-prod -n ticketmonster-dev
 
 
-# Create Pipeline
- oc create -f git/ose3-ticket-monster/openshift/monster_pipeline_devops.yml
+# Create CI/CD Pipeline
+oc create -f git/ose3-ticket-monster/openshift/monster_pipeline_devops.yml -n ticketmonster-DEV
